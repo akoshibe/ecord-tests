@@ -22,21 +22,26 @@ from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 
 from domains import Domain
-from vlansrc import VLANHost
 
-# Topology Configurations
+# VLAN Configurations
 #
+# If true, use VLAN-aware Ethernet edge traffic sources/sinks (hosts). The hostsi
+# will use VLAN/IP pairs as specified by VLANS_SITE* variables below.
+VLAN_ENABLE = False
 # VLANS_SITE[A-C] - VLANs handled at the Ethernet edge for each site, with
 # associated endpoint IP address
 VLANS_SITEA = { 100 : '10.0.0.1' , 200 : '10.0.0.2' }
 VLANS_SITEB = { 100 : '10.0.0.3' }
 VLANS_SITEC = { 200 : '10.0.0.4' }
 
-# DEBUG_* - replace parts of the network with hosts for debuggability
+# Debug options
 #
 # If True, replace Ethernet Edges/transport with VLAN-aware hosts that expect
 # the same VLANS as the edges and transports.
 DEBUG_XCS = False 
+
+if VLAN_ENABLE or DEBUG_XCS:
+    from vlansrc import VLANHost
 
 class StaticNodes( Domain ):
     """
@@ -94,7 +99,10 @@ class EtherEdge( Domain ):
         ee = self.addSwitch( 'ee%s' % id,
                               dpid='000000000ee%s' % id,
                               cls=UserSwitch )
-        vh = self.addHost( 'vh%s0' % id, cls=VLANHost, vmap=self.vmap )
+        if VLAN_ENABLE:
+            vh = self.addHost( 'vh%s0' % id, cls=VLANHost, vmap=self.vmap )
+        else:
+            vh = self.addHost( 'h%s0' % id, ip='10.0.0.%s' % id )
         self.addLink( ee, vh, port1=1 )
 
 def assignCtls( dm, cts ):
@@ -151,7 +159,6 @@ def cfgStatic( metro ):
     # UserSwitch.dpctl() seems buggy, so invoking a sh script here.
     info( 'Configuring static nodes...' )
     time.sleep( 2 )
-    info( metro.getControllers() )   
     ctl = metro.getControllers( 'c40' ).IP() if metro != None else ''
     Popen( [ 'sh', './static.sh' ] )
     Popen( [ 'sh', './netcfgs.sh', ctl ] )
