@@ -5,8 +5,11 @@ configures the cross-connects.
 
 To invoke:
 
-   sudo cord16.py [IPset] #or
-   sudo cord16.py [IPset1] [IPset2] [IPset3] [IPset4]
+    sudo cord16.py [IPset]
+
+or 
+
+    sudo cord16.py [IPset1] [IPset2] [IPset3] [IPset4]
 
 IPset is a comma-separated list of IPs in a controller cluster. Supplying one
 set associates all sites to that one set; supplying four associates each site to
