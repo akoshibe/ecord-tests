@@ -13,6 +13,7 @@ from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 
 from domains import Domain
+from vlansrc import VLANHost
 
 # If true, use VLAN-aware Ethernet edge traffic sources/sinks (hosts). The hosts
 # will use VLAN/IP pairs as specified by VLANS_SITE* variables below.
@@ -35,9 +36,6 @@ DEBUG_VH1 = { 100 : '10.0.0.100' , 200 : '10.0.0.101' }
 DEBUG_VH2 = { 101 : '10.0.0.102' , 201 : '10.0.0.103' }
 DEBUG_VH3 = { 101 : '10.0.0.104' }
 DEBUG_VH4 = { 100 : '10.0.0.105' }
-
-if VLAN_ENABLE or DEBUG_XCS:
-    from vlansrc import VLANHost
 
 class CO( Domain ):
     """
@@ -193,13 +191,13 @@ def setup( argv ):
     domains.insert( 1, CO( 1 ) )
     domains.insert( 2, CO( 2 ) )
     domains.insert( 3, CO( 3 ) )
+
     # create all domains, unless ading debug hosts
-    if not DEBUG_XCS:
-        domains.insert( 4, EtherEdge(1, vmap=VLANS_SITEA ) )
-        domains.insert( 5, EtherEdge(2, vmap=VLANS_SITEB ) )
-        domains.insert( 6, EtherEdge(3, vmap=VLANS_SITEC ) )
-        domains.insert( 7, MetroCore(4) )
-        metro = domains[ 7 ]
+    domains.insert( 4, EtherEdge(1, vmap=VLANS_SITEA ) )
+    domains.insert( 5, EtherEdge(2, vmap=VLANS_SITEB ) )
+    domains.insert( 6, EtherEdge(3, vmap=VLANS_SITEC ) )
+    domains.insert( 7, MetroCore(4) )
+    metro = domains[ 7 ]
 
     # connect domains to controllers according to configuration
     assignCtls( domains, ctlsets )
