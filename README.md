@@ -9,7 +9,7 @@ To invoke:
 
 or 
 
-    sudo cord16.py [IPset1] [IPset2] [IPset3] [IPset4]
+    sudo cord16.py [CO1 IPset1] [CO2 IPset2] [CO3 IPset3] [Metro IPset4]
 
 IPset is a comma-separated list of IPs in a controller cluster. Supplying one
 set associates all sites to that one set; supplying four associates each site to
@@ -29,6 +29,14 @@ variables in the same file.
 
 VLAN* flags switch on/off VLAN-aware traffic sources/sinks for the Ethernet 
 edge, or configure them in some way.
+
+To connect the statically-configured fabrics to actual controllers, set
+
+CPLANE_ENABLE = True
+
+which will associate each CO to an IPset. This also prevents the fabrics from
+being statically configured. The OVSes will remain statically configured in this
+case.
 
 All flags are defined in cord16.py, along with more comments.
 
