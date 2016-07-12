@@ -2,17 +2,8 @@
 """
 ONS 2016 demo ECORD POD topology.
 
-This emulation models what the Metro controller should see - the transport
-switch(es), and the Ethernet Edges at each site, and the indirect paths between
-them, if any.
-
-The fabrics are statically configured with cross-connect functionality, and the
-OVSes (representing the services), likewise to rewrite VLANs.
-
-Each site is a separate control domain. The statically configured nodes are
-collectively in another domain with no controller - this is so that the nodes
-can be statically configured using dpctl or similar (e.g. as OpenFlow nodes
-pointing to nothing so we can point a dpctl at them).
+This emulation models a claw topology of three sites connected together by a
+packet transport network.
 """
 from subprocess import Popen
 
@@ -23,9 +14,7 @@ from mininet.log import setLogLevel, info
 
 from domains import Domain
 
-# VLAN Configurations
-#
-# If true, use VLAN-aware Ethernet edge traffic sources/sinks (hosts). The hostsi
+# If true, use VLAN-aware Ethernet edge traffic sources/sinks (hosts). The hosts
 # will use VLAN/IP pairs as specified by VLANS_SITE* variables below.
 VLAN_ENABLE = False
 # VLANS_SITE[A-C] - VLANs handled at the Ethernet edge for each site, with
@@ -34,44 +23,52 @@ VLANS_SITEA = { 100 : '10.0.0.1' , 200 : '10.0.0.2' }
 VLANS_SITEB = { 100 : '10.0.0.3' }
 VLANS_SITEC = { 200 : '10.0.0.4' }
 
-# Debug options
-#
+# If true, site fabrics will be connected to a local control plane. Otherwise,
+# they are statically configured by static.sh.
+CPLANE_ENABLE = True
+
 # If True, replace Ethernet Edges/transport with VLAN-aware hosts that expect
 # the same VLANS as the edges and transports.
 DEBUG_XCS = False 
+# VLANs/IPs used for debug-mode VLAN hosts: vh1,2,3, and 4.
+DEBUG_VH1 = { 100 : '10.0.0.100' , 200 : '10.0.0.101' }
+DEBUG_VH2 = { 101 : '10.0.0.102' , 201 : '10.0.0.103' }
+DEBUG_VH3 = { 101 : '10.0.0.104' }
+DEBUG_VH4 = { 100 : '10.0.0.105' }
 
 if VLAN_ENABLE or DEBUG_XCS:
     from vlansrc import VLANHost
 
+class CO( Domain ):
+    """
+    A single central office fabric. May or may not be statically configured
+    based on value of CPLANE_ENABLE.
+    """
+    def __init__( self, did ):
+        Domain.__init__(self, did)
+
+    def build( self ):
+        id = self.getId()
+        self.addSwitch( 'xc%s' % id, dpid='0000ffffff0%s' % id, cls=UserSwitch )
+
 class StaticNodes( Domain ):
     """
-    The set of statically configured nodes (fabrics/cross-connects and
-    vlan-rewriting OVS nodes). These nodes do not connect to any controllers.
+    The set of statically configured nodes. These are the OVSes that emulate the
+    vSG/rewrites VLANs. These nodes do not connect to any controllers.
     """
     def build( self ):
-        # site A - A CpQD acting as cross-connect *and* VLAN stitching.
-        xc1 = self.addSwitch( 'xc1', dpid='0000ffffff01', cls=UserSwitch )
-        ovs1 = self.addSwitch( 'ovs1', dpid='0000000000000001' ) 
-        # site B/C - CpQD + OVS, latter doing VLAN stitching
-        xc2 = self.addSwitch( 'xc2', dpid='0000ffffff02', cls=UserSwitch ) 
-        xc3 = self.addSwitch( 'xc3', dpid='0000ffffff03', cls=UserSwitch ) 
-        ovs2 = self.addSwitch( 'ovs2', dpid='0000000000000002' )
-        ovs3 = self.addSwitch( 'ovs3', dpid='0000000000000003' )
+        # site A - OVS is a vSG (currently unconfigured, even statically).
+        # site B/C - OVS doing VLAN stitching
+        self.addSwitch( 'ovs1', dpid='0000000000000001' ) 
+        self.addSwitch( 'ovs2', dpid='0000000000000002' )
+        self.addSwitch( 'ovs3', dpid='0000000000000003' )
 
-        self.addLink( xc1, ovs1, port1=3, port2=1 )
-        self.addLink( xc2, ovs2, port1=1, port2=2 )
-        self.addLink( xc3, ovs3, port1=1, port2=2 )
-
-        # if debug-mode, sandwich Site A and B xc's/ovses with VLANHosts
+        # if debug-mode, make some EE-replacing VLAN Hosts and set aside.
         if DEBUG_XCS:
-            ee1 = self.addHost( 'vh1', cls=VLANHost, vmap={ 100 : '10.0.0.100' , 200 : '10.0.0.101' } )
-            txp1 = self.addHost( 'vh2', cls=VLANHost, vmap={ 101 : '10.0.0.102' , 201 : '10.0.0.103' } )
-            txp2 = self.addHost( 'vh3', cls=VLANHost, vmap={ 101 : '10.0.0.104' } )
-            ee2 = self.addHost( 'vh4', cls=VLANHost, vmap={ 100 : '10.0.0.105' } )
-            self.addLink( ee1, xc1, port2=1 )
-            self.addLink( xc1, txp1, port1=2 )
-            self.addLink( txp2, xc2, port2=2 )
-            self.addLink( ovs2, ee2, port1=1 )
+            self.addHost( 'vh1', cls=VLANHost, vmap=DEBUG_VH1 )
+            self.addHost( 'vh2', cls=VLANHost, vmap=DEBUG_VH2 )
+            self.addHost( 'vh3', cls=VLANHost, vmap=DEBUG_VH3 )
+            self.addHost( 'vh4', cls=VLANHost, vmap=DEBUG_VH4 )
 
 class MetroCore( Domain ):
     """
@@ -82,12 +79,11 @@ class MetroCore( Domain ):
         Domain.__init__(self, did)
 
     def build( self ):
-        txp1 = self.addSwitch( 'txp1', dpid='00000c072ee1', cls=UserSwitch )
+        self.addSwitch( 'txp1', dpid='00000c072ee1', cls=UserSwitch )
 
 class EtherEdge( Domain ):
     """
-    The Ethernet Edge node and VLAN traffic source.
-    The EE is also controlled by the metro-level controller.
+    The Ethernet Edge and traffic source, with former part fo teh Metro domain.
     """
     def __init__( self, did, vmap ):
         Domain.__init__(self, did)
@@ -107,86 +103,116 @@ class EtherEdge( Domain ):
 
 def assignCtls( dm, cts ):
     """
-    Allocate controller sets to each domain. Assumes cts[0]->dm[0]... if there
-    are enough sets of controller IPs. Else, assign the first set to all of the
-    domains that need controllers. 
+    Allocate controller sets to domains. 
+    If CPLANE_ENABLE=True, each fabric is also connected to a controller (set).
+    In general, if only one IP set is provided, everything is connected to that
+    one IP set. If four IP sets or more are supplied, the fabrics and metro
+    domains (the transport and EE nodes) are each given a IP set, given
+    CPLAN_ENABLE is set. Otherwise, just the first IP set is connected with the
+    metro domains.
     """
-    # 0: static(ally configured) domain
-    dm[ 0 ].addController( 'c00', controller=RemoteController, ip='127.0.0.1', port=6666 )
-    # give the rest controllers
+    ccls = RemoteController
+    # all domains controlled by metro controller(s)
+    metro = dm[ 4:8 ]
     i = 0
-    for d in dm[ 1: ]:
+    if CPLANE_ENABLE:
+        for d in dm[ 1:4 ]:
+            ctls = cts[ i ].split( ',' )
+            print ( ctls )
+            for c in range( len( ctls ) ):
+                d.addController( 'c%s0%s' % ( d.getId(), c ), controller=ccls, ip=ctls[ c ] )
+            if len( cts ) >= 4:
+                i += 1
+    else:
+        for d in dm[ 1:4 ]:
+            d.addController( 'c00', controller=ccls, ip='127.0.0.1', port=6666 )
+
+    # either the last IP set or first will be used here
+    for m in metro:
         ctls = cts[ i ].split( ',' )
         for c in range( len( ctls ) ):
-            d.addController( 'c%s%s' % ( d.getId(), c ),
-                             controller=RemoteController,
-                             ip=ctls[ c ] )
-        if len( cts ) == len( dm ) - 1:
-            i += 1
+            m.addController( 'c%s%s' % ( m.getId(), c ), controller=ccls, ip=ctls[ c ] )
+
+    # invariant static domain is 0th in domain list
+    dm[ 0 ].addController( 'c00', controller=ccls, ip='127.0.0.1', port=6666 )
 
 def wireTopo( dm, net ):
     """
     build out the multidomain topology as follows:
 
-             +----stat(xc1)---ee1          [site A]
+             +----CO(xc1)---ee1                 [site A]
+             |       |
+             |   stat(ovs1)
              |
-    core(txp1)----stat(xc2-ovs2)---ee2     [site B]
+    core(txp1)----CO(xc2)--stat(ovs2)---ee2     [site B]
              |
-             +----stat(xc3-ovs3)---ee3     [site C]
+             +----CO(xc3)--stat(ovs3)---ee3     [site C]
     """
-    # Only wire together things if not in debug mode
-    if DEBUG_XCS:
-        return
- 
-    c = dm[ 4 ]
     s = dm[ 0 ]
-    net.addLink( c.getSwitches( 'txp1' ), s.getSwitches( 'xc1' ), port1=1, port2=2 )
-    net.addLink( c.getSwitches( 'txp1' ), s.getSwitches( 'xc2' ), port1=2, port2=2 )
-    net.addLink( c.getSwitches( 'txp1' ), s.getSwitches( 'xc3' ), port1=3, port2=2 )
-    net.addLink( s.getSwitches( 'xc1' ), dm[ 1 ].getSwitches( 'ee1' ), port1=1, port2=2 )
-    net.addLink( s.getSwitches( 'ovs2' ), dm[ 2 ].getSwitches( 'ee2' ), port1=1, port2=2 )
-    net.addLink( s.getSwitches( 'ovs3' ), dm[ 3 ].getSwitches( 'ee3' ), port1=1, port2=2 )
+    # Only wire together test nodes if in debug mode
+    if DEBUG_XCS:
+        net.addLink( s.getHosts( 'vh1' ), dm[ 1 ].getSwitches( 'xc1' ), port2=1 )
+        net.addLink( dm[ 1 ].getSwitches( 'xc1' ), s.getHosts( 'vh2' ), port1=2 )
+        net.addLink( s.getHosts( 'vh3' ), dm[ 2 ].getSwitches( 'xc2' ), port2=2 )
+        net.addLink( s.getSwitches( 'ovs2' ), s.getHosts( 'vh4' ), port2=1 )
+    else:
+        txp = dm[ 7 ].getSwitches( 'txp1' )
+        net.addLink( txp, dm[ 1 ].getSwitches( 'xc1' ), port1=1, port2=2 )
+        net.addLink( txp, dm[ 2 ].getSwitches( 'xc2' ), port1=2, port2=2 )
+        net.addLink( txp, dm[ 3 ].getSwitches( 'xc3' ), port1=3, port2=2 )
+        net.addLink( dm[ 1 ].getSwitches( 'xc1' ), dm[ 4 ].getSwitches( 'ee1' ), port1=1, port2=2 )
+        net.addLink( s.getSwitches( 'ovs2' ), dm[ 5 ].getSwitches( 'ee2' ), port1=1, port2=2 )
+        net.addLink( s.getSwitches( 'ovs3' ), dm[ 6 ].getSwitches( 'ee3' ), port1=1, port2=2 )
+
+    # Assemble COs - attach OVSes to CpQDs
+    net.addLink( dm[ 1 ].getSwitches( 'xc1' ), s.getSwitches( 'ovs1' ), port1=3, port2=1 )
+    net.addLink( dm[ 2 ].getSwitches( 'xc2' ), s.getSwitches( 'ovs2' ), port1=1, port2=2 )
+    net.addLink( dm[ 3 ].getSwitches( 'xc3' ), s.getSwitches( 'ovs3' ), port1=1, port2=2 )
 
 def cfgStatic( metro ):
     """
     statically configure the static domain. See static.sh for details.
-    - xc1 both acts as a crossconnect and stitches VLANs
-    - xc2/3 are plain cross-connects
-    - ovs2/3 stitches VLANs
     """
     import time
 
     # UserSwitch.dpctl() seems buggy, so invoking a sh script here.
     info( 'Configuring static nodes...' )
     time.sleep( 2 )
-    ctl = metro.getControllers( 'c40' ).IP() if metro != None else ''
-    Popen( [ 'sh', './static.sh' ] )
+    ctl = metro.getControllers()[0].IP() if metro != None else ''
+    Popen( [ 'sh', './static.sh', 'static' if not CPLANE_ENABLE else '' ] )
     Popen( [ 'sh', './netcfgs.sh', ctl ] )
 
 def setup( argv ):
     ctlsets = argv[ 1: ]
-    
-    # create sites
     domains = []
     metro = None
+
+    # things that can be statically config'd are grouped as domain 0
+    # 1,2, and 3 are sites A, B, and C, respectively.
     domains.insert( 0, StaticNodes() )
+    domains.insert( 1, CO( 1 ) )
+    domains.insert( 2, CO( 2 ) )
+    domains.insert( 3, CO( 3 ) )
+    # create all domains, unless ading debug hosts
     if not DEBUG_XCS:
-        domains.insert( 1, EtherEdge(1, vmap=VLANS_SITEA ) )
-        domains.insert( 2, EtherEdge(2, vmap=VLANS_SITEB ) )
-        domains.insert( 3, EtherEdge(3, vmap=VLANS_SITEC ) )
-        domains.insert( 4, MetroCore(4) )
-        metro = domains[ 4 ]
+        domains.insert( 4, EtherEdge(1, vmap=VLANS_SITEA ) )
+        domains.insert( 5, EtherEdge(2, vmap=VLANS_SITEB ) )
+        domains.insert( 6, EtherEdge(3, vmap=VLANS_SITEC ) )
+        domains.insert( 7, MetroCore(4) )
+        metro = domains[ 7 ]
+
+    # connect domains to controllers according to configuration
     assignCtls( domains, ctlsets )
 
-    # build network out - domains are still unconnected at this point
+    # build network out
     map( lambda d : d.build(), domains )
     net = Mininet()
     map( lambda d : d.injectInto( net ), domains )
     net.build()
 
-    # wire domains together
+    # wire domains together since domains are still unconnected at this point
     wireTopo( domains, net )
-
+    # start network, do static configs, and launch CLI
     map( lambda d : d.start(), domains )
     cfgStatic( metro )
     CLI( net )

@@ -72,7 +72,7 @@ stitch_ovs () {
 #
 # site A fabric. emulate the vlan rewriting that happens at the OVS attached to it,
 # but pass non-tagged traffic as-is.
-fabric1 () {
+fabric1_cpqd () {
     stitch_cpqd xc1 1 100 2 101
     stitch_cpqd xc1 1 200 2 201
     stitch_cpqd xc1 2 101 1 100
@@ -83,18 +83,24 @@ fabric1 () {
 
 # sites B and C fabrics are regular pass-through, and ovs stitches the VLANs (while
 # passing tagged traffic normally).
-fabric2 () {
+fabric2_cpqd () {
     pass_cpqd xc2 1 2
     pass_cpqd xc2 2 1
+}
+
+fabric2_ovs () {
     stitch_ovs ovs2 1 100 2 101 
     stitch_ovs ovs2 2 101 1 100
     pass_ovs ovs2 1 2
     pass_ovs ovs2 2 1
 }
 
-fabric3 () {
+fabric3_cpqd () {
     pass_cpqd xc3 1 2
     pass_cpqd xc3 2 1
+}
+
+fabric3_ovs () {
     stitch_ovs ovs3 1 200 2 201
     stitch_ovs ovs3 2 201 1 200
     pass_ovs ovs3 1 2
@@ -102,6 +108,12 @@ fabric3 () {
 }
 
 # "main()" - pushes static configs anf network config to controller.
-fabric1 1>/dev/null 2>&1
-fabric2 1>/dev/null 2>&1
-fabric3 1>/dev/null 2>&1
+if [ "$1" ]; then
+    fabric1_cpqd 1>/dev/null 2>&1
+    fabric2_cpqd 1>/dev/null 2>&1
+    fabric3_cpqd 1>/dev/null 2>&1
+fi
+
+fabric2_ovs 1>/dev/null 2>&1
+fabric3_ovs 1>/dev/null 2>&1
+
