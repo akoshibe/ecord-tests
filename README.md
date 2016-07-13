@@ -9,7 +9,7 @@ To invoke:
 
 or 
 
-    sudo cord16.py [IPset1] [IPset2] [IPset3] [IPset4]
+    sudo cord16.py [CO1 IPset1] [CO2 IPset2] [CO3 IPset3] [Metro IPset4]
 
 IPset is a comma-separated list of IPs in a controller cluster. Supplying one
 set associates all sites to that one set; supplying four associates each site to
